@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "JMS Auto Parts"
+description = "A bilingual Arabic and English storefront for browsing and ordering quality car spare parts by vehicle origin, brand, model, and category, with favorites, cart, and a simple checkout flow."
+version = "1.0.0"
+id = "artifacts/jms-auto-parts"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19511
+
+[services.development]
+run = "pnpm --filter @workspace/jms-auto-parts run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/jms-auto-parts", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/jms-auto-parts/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19511"
+BASE_PATH = "/"
