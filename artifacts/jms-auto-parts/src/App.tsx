@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
+import AdPlayer from './components/AdPlayer';
 import { origins, products, productModels, productYears, type OriginId, type Product } from './data/catalog';
 import type { TranslationKey } from './data/translations';
 
@@ -246,6 +247,7 @@ function Storefront() {
             <div className="hero-callout"><ShieldCheck size={19} />{t('reliable')}</div>
           </div>
         </section>
+        <AdPlayer />
         <div className="trust-row" aria-label="JMS service promises">
           {[
             { icon: <ShieldCheck size={21} />, title: t('reliable'), sub: t('reliableSub') },
