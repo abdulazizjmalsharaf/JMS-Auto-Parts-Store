@@ -1,0 +1,29 @@
+kind = "video"
+videoAspectRatio = "16:9"
+previewPath = "/jms-brand-ad/"
+title = "JMS Brand Ad"
+description = "A standalone 15-second animated JMS car-parts advertisement in Arabic and English, composed as a shareable motion-graphics video."
+version = "1.0.0"
+id = "artifacts/jms-brand-ad"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/jms-brand-ad/" ]
+localPort = 19143
+
+[services.development]
+run = "pnpm --filter @workspace/jms-brand-ad run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/jms-brand-ad", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/jms-brand-ad/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19143"
+BASE_PATH = "/jms-brand-ad/"
