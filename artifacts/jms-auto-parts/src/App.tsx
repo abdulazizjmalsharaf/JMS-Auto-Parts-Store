@@ -12,7 +12,8 @@ import {
 } from 'lucide-react';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
-import { origins, products, productModels, productYears, type OriginId, type Product } from './data/catalog';
+import { origins, type OriginId, type Product } from './data/catalog';
+import { fetchProducts, placeOrder } from './lib/supabase';
 import type { TranslationKey } from './data/translations';
 
 const queryClient = new QueryClient();
@@ -48,6 +49,10 @@ function ArtIcon({ product, size = 66 }: { product: Product; size?: number }) {
 function Storefront() {
   const { language, toggleLanguage, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogFailed, setCatalogFailed] = useState(false);
+  const [catalogRetry, setCatalogRetry] = useState(0);
   const [favorites, setFavorites] = useState<string[]>(() => readStorage('jms-favorites', []));
   const [cart, setCart] = useState<CartEntry[]>(() => readStorage('jms-cart', []));
   const [query, setQuery] = useState('');
@@ -63,6 +68,8 @@ function Storefront() {
   const [modalProduct, setModalProduct] = useState<Product | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
+  const [orderSubmitting, setOrderSubmitting] = useState(false);
+  const [orderFailed, setOrderFailed] = useState(false);
   const [form, setForm] = useState<Record<CheckoutField, string>>({ name: '', phone: '', city: '', address: '' });
   const [errors, setErrors] = useState<Partial<Record<CheckoutField, string>>>({});
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -72,6 +79,23 @@ function Storefront() {
 
   useEffect(() => { localStorage.setItem('jms-favorites', JSON.stringify(favorites)); }, [favorites]);
   useEffect(() => { localStorage.setItem('jms-cart', JSON.stringify(cart)); }, [cart]);
+  useEffect(() => {
+    let active = true;
+    setCatalogLoading(true);
+    setCatalogFailed(false);
+    fetchProducts()
+      .then((loadedProducts) => {
+        if (active) setProducts(loadedProducts);
+      })
+      .catch((error: unknown) => {
+        console.error('Could not load the Supabase catalog.', error);
+        if (active) setCatalogFailed(true);
+      })
+      .finally(() => {
+        if (active) setCatalogLoading(false);
+      });
+    return () => { active = false; };
+  }, [catalogRetry]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -148,6 +172,7 @@ function Storefront() {
     notify(t('filterApplied'));
   };
   const categoryNames = Array.from(new Map(products.map((product) => [product.category, product.categoryName[language]])).entries());
+  const productYears = Array.from(new Set(products.flatMap((product) => product.years))).sort((a, b) => b - a);
   const finderBrands = origins.find((item) => item.id === finder.origin)?.brands ?? origins.flatMap((item) => item.brands);
   const finderModels = Array.from(new Set(products.filter((product) => (!finder.origin || product.origin === finder.origin) && (!finder.brand || product.brand === finder.brand)).flatMap((product) => product.models))).sort();
   const catalogBrands = origins.find((item) => item.id === originFilter)?.brands ?? origins.flatMap((item) => item.brands);
@@ -168,18 +193,33 @@ function Storefront() {
     setErrors(next);
     return Object.keys(next).length === 0;
   };
-  const submitOrder = (event: FormEvent<HTMLFormElement>) => {
+  const submitOrder = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!validate()) return;
-    const order = { ...form, lines: cartItems.map(({ product, quantity }) => ({ productId: product.id, name: product.name[language], quantity, price: product.price })), total: cartTotal, createdAt: new Date().toISOString() };
-    const orders = readStorage<unknown[]>('jms-orders', []);
-    localStorage.setItem('jms-orders', JSON.stringify([...orders, order]));
-    setCart([]);
-    setCheckoutSuccess(true);
-    setErrors({});
+    setOrderSubmitting(true);
+    setOrderFailed(false);
+    try {
+      await placeOrder({
+        customerName: form.name,
+        phone: form.phone,
+        city: form.city,
+        address: form.address,
+        language,
+        items: cartItems.map(({ product, quantity }) => ({ productId: product.id, quantity })),
+      });
+      setCart([]);
+      setCheckoutSuccess(true);
+      setErrors({});
+    } catch (error) {
+      console.error('Could not save the JMS order.', error);
+      setOrderFailed(true);
+    } finally {
+      setOrderSubmitting(false);
+    }
   };
   const openCheckout = () => {
     setCheckoutSuccess(false);
+    setOrderFailed(false);
     setCheckoutOpen(true);
     setDrawerOpen(false);
   };
@@ -293,7 +333,9 @@ function Storefront() {
             {(originFilter !== 'all' || brandFilter !== 'all' || categoryFilter !== 'all' || priceFilter !== 'all' || query || favoritesOnly || finder.model) && <button type="button" className="filter-chip" onClick={clearFilters} data-testid="button-clear-filters">{t('clearFilters')} <X size={12} /></button>}
           </div>
           <div className="product-grid">
-            {visibleProducts.length === 0 ? <div className="empty-state">
+            {catalogLoading ? <div className="empty-state" role="status"><div className="empty-state-icon"><Package size={24} /></div><p>{t('catalogLoading')}</p></div>
+              : catalogFailed ? <div className="empty-state" role="alert"><div className="empty-state-icon"><Package size={24} /></div><h3>{t('catalogLoadError')}</h3><button type="button" className="primary-btn" onClick={() => setCatalogRetry((attempt) => attempt + 1)}>{t('retry')}</button></div>
+              : visibleProducts.length === 0 ? <div className="empty-state">
               <div className="empty-state-icon"><Package size={24} /></div>
               <h3>{favoritesOnly && favorites.length === 0 ? t('noFavorites') : t('emptyTitle')}</h3>
               <p>{favoritesOnly && favorites.length === 0 ? t('noFavoritesText') : t('emptyText')}</p>
@@ -369,7 +411,8 @@ function Storefront() {
             {(['name', 'phone', 'city', 'address'] as CheckoutField[]).map((field) => <label key={field} className={field === 'address' ? 'full' : ''}><span className="field-label">{t(field)} *</span><input className="text-field" type={field === 'phone' ? 'tel' : 'text'} autoComplete={field === 'name' ? 'name' : field === 'phone' ? 'tel' : field === 'city' ? 'address-level2' : 'street-address'} placeholder={t(`${field}Placeholder` as TranslationKey)} value={form[field]} onChange={(event) => { setForm((current) => ({ ...current, [field]: event.target.value })); setErrors((current) => ({ ...current, [field]: undefined })); }} aria-invalid={!!errors[field]} aria-describedby={errors[field] ? `error-${field}` : undefined} data-testid={`input-checkout-${field}`} />{errors[field] && <span className="form-error" id={`error-${field}`} role="alert">{errors[field]}</span>}</label>)}
             <div className="full cod-note"><Truck size={18} /><span><strong>{t('cashOnly')}</strong><br />{t('cashText')}</span></div>
             <div className="checkout-summary full"><strong>{t('orderSummary')}</strong>{cartItems.map(({ product, quantity }) => <div key={product.id} className="checkout-summary-row"><span>{productTitle(product)} × {quantity}</span><span>{price(product.price * quantity, language)} {t('currency')}</span></div>)}<div className="checkout-summary-row" style={{ borderTop: '1px solid hsl(var(--border))', marginTop: 6, paddingTop: 8, fontWeight: 800 }}><span>{t('total')}</span><span>{price(cartTotal, language)} {t('currency')}</span></div></div>
-            <button type="submit" className="primary-btn full" data-testid="button-submit-order">{t('placeOrder')} {language === 'ar' ? <ArrowLeft size={16} /> : <ArrowRight size={16} />}</button>
+            {orderFailed && <p className="form-error full" role="alert">{t('orderError')}</p>}
+            <button type="submit" className="primary-btn full" disabled={orderSubmitting} data-testid="button-submit-order">{orderSubmitting ? t('placingOrder') : t('placeOrder')} {language === 'ar' ? <ArrowLeft size={16} /> : <ArrowRight size={16} />}</button>
           </div>
         </form>}
       </section></div>}

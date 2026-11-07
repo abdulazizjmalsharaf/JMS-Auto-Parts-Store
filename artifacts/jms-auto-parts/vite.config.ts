@@ -29,6 +29,11 @@ if (!basePath) {
 
 export default defineConfig({
   base: basePath,
+  define: {
+    'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify(
+      process.env['supsbase_secret2'] ?? '',
+    ),
+  },
   plugins: [
     react(),
     tailwindcss(),
