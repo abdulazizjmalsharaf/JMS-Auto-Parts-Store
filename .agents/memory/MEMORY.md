@@ -1,0 +1,1 @@
+- [Supabase accounts](supabase-choice.md) — user explicitly chose Supabase email/password accounts inside JMS, using their existing project and saved keys.

@@ -139,6 +139,36 @@ function Storefront() {
     };
   }, []);
   useEffect(() => {
+    if (!authOpen) {
+      setAuthPassword('');
+      return;
+    }
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    const modal = document.querySelector<HTMLElement>('[data-testid="modal-auth"]');
+    document.body.style.overflow = 'hidden';
+    modal?.querySelector<HTMLInputElement>('input')?.focus();
+    const trapFocus = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab' || !modal) return;
+      const controls = Array.from(modal.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)'));
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener('keydown', trapFocus);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', trapFocus);
+      previousFocus?.focus();
+    };
+  }, [authOpen]);
+  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setDrawerOpen(false);
@@ -173,14 +203,14 @@ function Storefront() {
   };
   const changeQuantity = (id: string, delta: number) => setCart((current) => current.map((entry) => entry.id === id ? { ...entry, quantity: Math.max(1, entry.quantity + delta) } : entry));
   const removeFromCart = (id: string) => setCart((current) => current.filter((entry) => entry.id !== id));
-  const cartItems = useMemo(() => cart.map((entry) => ({ ...entry, product: products.find((product) => product.id === entry.id) })).filter((entry): entry is CartEntry & { product: Product } => !!entry.product), [cart]);
+  const cartItems = useMemo(() => cart.map((entry) => ({ ...entry, product: products.find((product) => product.id === entry.id) })).filter((entry): entry is CartEntry & { product: Product } => !!entry.product), [cart, products]);
   const cartCount = cart.reduce((sum, entry) => sum + entry.quantity, 0);
   const cartTotal = cartItems.reduce((sum, entry) => sum + entry.product.price * entry.quantity, 0);
   const suggestions = useMemo(() => {
     if (query.trim().length < 1) return [];
     const needle = query.toLocaleLowerCase();
     return products.filter((product) => [product.name.en, product.name.ar, product.brand, product.categoryName.en, product.categoryName.ar, ...product.models].some((value) => value.toLocaleLowerCase().includes(needle))).slice(0, 5);
-  }, [query]);
+  }, [query, products]);
 
   const visibleProducts = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
@@ -198,7 +228,7 @@ function Storefront() {
     if (sort === 'price-asc') filtered.sort((a, b) => a.price - b.price);
     if (sort === 'price-desc') filtered.sort((a, b) => b.price - a.price);
     return filtered;
-  }, [query, originFilter, brandFilter, categoryFilter, saleOnly, priceFilter, favoritesOnly, favorites, finder, sort]);
+  }, [products, query, originFilter, brandFilter, categoryFilter, saleOnly, priceFilter, favoritesOnly, favorites, finder, sort]);
 
   const clearFilters = () => {
     setOriginFilter('all'); setBrandFilter('all'); setCategoryFilter('all'); setPriceFilter('all');
@@ -268,6 +298,7 @@ function Storefront() {
   };
   const submitAuth = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (authBusy) return;
     const email = authEmail.trim();
     if (!email || !authPassword) {
       setAuthFeedback(t('authRequired'));
@@ -375,7 +406,7 @@ function Storefront() {
             <button type="button" className="lang-toggle" onClick={toggleLanguage} aria-label="Switch language" data-testid="button-language">{language === 'en' ? 'عربي' : 'English'}</button>
             <button type="button" className="icon-button" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} data-testid="button-theme">{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button>
             <button type="button" className="icon-button desktop-action" onClick={openFavorites} aria-label={t('favorites')} data-testid="button-header-favorites"><Heart size={17} />{favorites.length > 0 && <span className="count-dot">{favorites.length}</span>}</button>
-            <button type="button" className="icon-button" onClick={() => setDrawerOpen(true)} aria-label={t('cart')} data-testid="button-header-cart"><ShoppingCart size={17} />{cartCount > 0 && <span className="count-dot">{cartCount}</span>}</button>
+            <button type="button" className="icon-button desktop-action" onClick={() => setDrawerOpen(true)} aria-label={t('cart')} data-testid="button-header-cart"><ShoppingCart size={17} />{cartCount > 0 && <span className="count-dot">{cartCount}</span>}</button>
           </div>
         </div>
       </header>
