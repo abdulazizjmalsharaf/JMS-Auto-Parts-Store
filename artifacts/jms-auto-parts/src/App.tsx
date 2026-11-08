@@ -8,12 +8,12 @@ import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Battery, Check, ChevronDown, CircleHelp,
   Cog, Disc3, Droplets, Filter, Heart, Lamp, Minus, Moon, Package, Plus, Search, ShieldCheck,
-  ShoppingBag, ShoppingCart, SlidersHorizontal, Sparkles, Sun, Trash2, Truck, Wrench, X, Zap,
+  LogOut, ShoppingBag, ShoppingCart, SlidersHorizontal, Sparkles, Sun, Trash2, Truck, UserRound, Wrench, X, Zap,
 } from 'lucide-react';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { origins, type OriginId, type Product } from './data/catalog';
-import { fetchProducts, placeOrder } from './lib/supabase';
+import { fetchProducts, getSupabaseClient, placeOrder } from './lib/supabase';
 import type { TranslationKey } from './data/translations';
 
 const queryClient = new QueryClient();
@@ -70,6 +70,14 @@ function Storefront() {
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
   const [orderSubmitting, setOrderSubmitting] = useState(false);
   const [orderFailed, setOrderFailed] = useState(false);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'signIn' | 'signUp'>('signIn');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authFeedback, setAuthFeedback] = useState('');
+  const [authFeedbackIsError, setAuthFeedbackIsError] = useState(false);
   const [form, setForm] = useState<Record<CheckoutField, string>>({ name: '', phone: '', city: '', address: '' });
   const [errors, setErrors] = useState<Partial<Record<CheckoutField, string>>>({});
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -97,11 +105,46 @@ function Storefront() {
     return () => { active = false; };
   }, [catalogRetry]);
   useEffect(() => {
+    let active = true;
+    let unsubscribe = () => {};
+    try {
+      const supabase = getSupabaseClient();
+      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (!active) return;
+        setCurrentUserEmail(session?.user.email ?? null);
+        if (session) {
+          setAuthOpen(false);
+          setAuthFeedback('');
+        }
+      });
+      unsubscribe = () => data.subscription.unsubscribe();
+      void supabase.auth.getSession()
+        .then(({ data: sessionData, error }) => {
+          if (!active) return;
+          if (error) {
+            console.error('Could not restore the Supabase session.', error);
+            return;
+          }
+          setCurrentUserEmail(sessionData.session?.user.email ?? null);
+        })
+        .catch((error: unknown) => {
+          if (active) console.error('Could not restore the Supabase session.', error);
+        });
+    } catch (error) {
+      console.error('Could not initialize Supabase authentication.', error);
+    }
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setDrawerOpen(false);
         setModalProduct(null);
         setCheckoutOpen(false);
+        setAuthOpen(false);
         setSuggestionsOpen(false);
       }
     };
@@ -217,6 +260,69 @@ function Storefront() {
       setOrderSubmitting(false);
     }
   };
+  const openAuth = () => {
+    setAuthMode('signIn');
+    setAuthFeedback('');
+    setAuthFeedbackIsError(false);
+    setAuthOpen(true);
+  };
+  const submitAuth = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const email = authEmail.trim();
+    if (!email || !authPassword) {
+      setAuthFeedback(t('authRequired'));
+      setAuthFeedbackIsError(true);
+      return;
+    }
+    if (authPassword.length < 6) {
+      setAuthFeedback(t('authPasswordShort'));
+      setAuthFeedbackIsError(true);
+      return;
+    }
+
+    setAuthBusy(true);
+    setAuthFeedback('');
+    setAuthFeedbackIsError(false);
+    try {
+      const auth = getSupabaseClient().auth;
+      if (authMode === 'signUp') {
+        const { data, error } = await auth.signUp({ email, password: authPassword });
+        if (error) throw error;
+        setAuthPassword('');
+        if (data.session) {
+          setCurrentUserEmail(data.user?.email ?? email);
+          setAuthOpen(false);
+        } else {
+          setAuthFeedback(t('authConfirmEmail'));
+        }
+      } else {
+        const { data, error } = await auth.signInWithPassword({ email, password: authPassword });
+        if (error) throw error;
+        setCurrentUserEmail(data.user.email ?? email);
+        setAuthPassword('');
+        setAuthOpen(false);
+      }
+    } catch (error) {
+      console.error('Supabase authentication failed.', error);
+      setAuthFeedback(authMode === 'signUp' ? t('authSignUpError') : t('authSignInError'));
+      setAuthFeedbackIsError(true);
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+  const signOut = async () => {
+    setAuthBusy(true);
+    try {
+      const { error } = await getSupabaseClient().auth.signOut();
+      if (error) throw error;
+      setCurrentUserEmail(null);
+    } catch (error) {
+      console.error('Supabase sign out failed.', error);
+      notify(t('authSignOutError'));
+    } finally {
+      setAuthBusy(false);
+    }
+  };
   const openCheckout = () => {
     setCheckoutSuccess(false);
     setOrderFailed(false);
@@ -262,6 +368,10 @@ function Storefront() {
             </div>}
           </div>
           <div className="nav-actions">
+            {currentUserEmail && <span className="account-email" title={currentUserEmail}>{t('signedIn')}: {currentUserEmail}</span>}
+            <button type="button" className="auth-trigger" onClick={currentUserEmail ? signOut : openAuth} aria-label={currentUserEmail ? t('signOut') : t('account')} title={currentUserEmail ? currentUserEmail : t('account')} disabled={authBusy} data-testid="button-account">
+              {currentUserEmail ? <LogOut size={16} /> : <UserRound size={16} />}<span>{currentUserEmail ? t('signOut') : t('account')}</span>
+            </button>
             <button type="button" className="lang-toggle" onClick={toggleLanguage} aria-label="Switch language" data-testid="button-language">{language === 'en' ? 'عربي' : 'English'}</button>
             <button type="button" className="icon-button" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} data-testid="button-theme">{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button>
             <button type="button" className="icon-button desktop-action" onClick={openFavorites} aria-label={t('favorites')} data-testid="button-header-favorites"><Heart size={17} />{favorites.length > 0 && <span className="count-dot">{favorites.length}</span>}</button>
@@ -415,6 +525,17 @@ function Storefront() {
             <button type="submit" className="primary-btn full" disabled={orderSubmitting} data-testid="button-submit-order">{orderSubmitting ? t('placingOrder') : t('placeOrder')} {language === 'ar' ? <ArrowLeft size={16} /> : <ArrowRight size={16} />}</button>
           </div>
         </form>}
+      </section></div>}
+
+      {authOpen && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setAuthOpen(false); }}><section className="modal-card auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title" data-testid="modal-auth">
+        <div className="modal-head"><h2 id="auth-title">{t(authMode === 'signIn' ? 'signIn' : 'signUp')}</h2><button type="button" className="icon-button" onClick={() => setAuthOpen(false)} aria-label={t('close')} data-testid="button-auth-close"><X size={18} /></button></div>
+        <form className="modal-content auth-form" onSubmit={submitAuth}>
+          <label><span className="field-label">{t('authEmail')}</span><input className="text-field" type="email" autoComplete="email" required maxLength={254} value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} data-testid="input-auth-email" /></label>
+          <label><span className="field-label">{t('authPassword')}</span><input className="text-field" type="password" autoComplete={authMode === 'signUp' ? 'new-password' : 'current-password'} required minLength={6} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} aria-describedby="auth-password-hint" data-testid="input-auth-password" /><small id="auth-password-hint" className="auth-hint">{t('authPasswordHint')}</small></label>
+          {authFeedback && <p className={`auth-feedback ${authFeedbackIsError ? 'is-error' : ''}`} role={authFeedbackIsError ? 'alert' : 'status'}>{authFeedback}</p>}
+          <button type="submit" className="primary-btn full" disabled={authBusy} data-testid="button-auth-submit">{authBusy ? t('authWorking') : t(authMode === 'signIn' ? 'signIn' : 'signUp')}</button>
+          <button type="button" className="auth-mode-toggle" disabled={authBusy} onClick={() => { setAuthMode((mode) => mode === 'signIn' ? 'signUp' : 'signIn'); setAuthFeedback(''); setAuthFeedbackIsError(false); }} data-testid="button-auth-mode">{t(authMode === 'signIn' ? 'authSwitchToSignUp' : 'authSwitchToSignIn')}</button>
+        </form>
       </section></div>}
 
       <div className="toast-stack" aria-live="polite" aria-atomic="false">{toasts.map((toast) => <div className="toast-message" key={toast.id} role="status" data-testid="status-toast"><Check size={16} />{toast.text}</div>)}</div>

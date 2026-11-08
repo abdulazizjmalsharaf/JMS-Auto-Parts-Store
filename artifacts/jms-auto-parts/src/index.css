@@ -107,6 +107,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .nav-links a { color: hsl(var(--muted-foreground)); text-decoration: none; font-size: 13px; font-weight: 600; transition: color .2s; }
 .nav-links a:hover { color: hsl(var(--primary)); }
 .nav-actions { display: flex; align-items: center; gap: 8px; }
+.auth-trigger { min-height: 40px; padding: 0 10px; border: 1px solid hsl(var(--border)); border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; background: hsl(var(--card)); color: hsl(var(--foreground)); cursor: pointer; white-space: nowrap; font-size: 11px; font-weight: 700; transition: background .2s, transform .2s; }
+.auth-trigger:hover:not(:disabled) { background: hsl(var(--accent)); transform: translateY(-1px); }
+.auth-trigger:disabled { cursor: wait; opacity: .65; }
+.account-email { max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: hsl(var(--muted-foreground)); font-size: 10px; font-weight: 600; }
 .icon-button { width: 40px; height: 40px; border: 1px solid hsl(var(--border)); border-radius: 12px; display: inline-grid; place-items: center; background: hsl(var(--card)); color: hsl(var(--foreground)); cursor: pointer; position: relative; transition: background .2s, transform .2s; }
 .icon-button:hover { background: hsl(var(--accent)); transform: translateY(-1px); }
 .count-dot { position: absolute; top: -5px; inset-inline-end: -5px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 99px; background: hsl(var(--primary)); color: white; font-size: 10px; display: grid; place-items: center; border: 2px solid hsl(var(--card)); }
@@ -242,6 +246,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .checkout-form .field-label { margin-bottom: 6px; }
 .checkout-form .text-field { min-height: 45px; }
 .form-error { color: #d34c4c; font-size: 10px; margin-top: 5px; }
+.auth-modal { width: min(440px, 100%); }
+.auth-form { display: grid; gap: 14px; }
+.auth-form label { display: grid; gap: 6px; }
+.auth-form .field-label { margin: 0; }
+.auth-form .text-field { min-height: 45px; }
+.auth-form .primary-btn { width: 100%; }
+.auth-hint { color: hsl(var(--muted-foreground)); font-size: 10px; }
+.auth-feedback { margin: 0; padding: 10px 12px; border-radius: 10px; background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); font-size: 12px; }
+.auth-feedback.is-error { background: rgba(211, 76, 76, .1); color: #d34c4c; }
+.auth-mode-toggle { min-height: 38px; padding: 6px; border: 0; background: transparent; color: hsl(var(--primary)); cursor: pointer; font-size: 12px; font-weight: 700; }
+.auth-mode-toggle:disabled { opacity: .65; cursor: wait; }
 .cod-note { background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); border-radius: 11px; padding: 12px; font-size: 11px; display: flex; gap: 9px; align-items: center; }
 .checkout-summary { background: hsl(var(--background)); border-radius: 12px; padding: 13px; font-size: 11px; }
 .checkout-summary-row { display: flex; justify-content: space-between; padding: 4px 0; }
@@ -276,6 +291,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .search-box input { height: 38px; font-size: 11px; }
   .nav-actions { gap: 5px; }
   .nav-actions .icon-button { width: 36px; height: 36px; border-radius: 11px; }
+  .nav-actions .auth-trigger { width: 36px; min-height: 36px; height: 36px; padding: 0; border-radius: 11px; }
+  .nav-actions .auth-trigger span, .nav-actions .account-email { display: none; }
   .nav-actions .desktop-action { display: none; }
   .lang-toggle { height: 36px; padding: 0 8px; }
   .hero { grid-template-columns: 1fr; min-height: auto; margin-top: 13px; }

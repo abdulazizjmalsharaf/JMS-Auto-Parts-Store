@@ -20,7 +20,7 @@ type ProductRow = {
 
 let client: ReturnType<typeof createClient> | undefined;
 
-function getClient() {
+export function getSupabaseClient() {
   const url = import.meta.env.VITE_SUPABASE_URL;
   const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
@@ -30,9 +30,9 @@ function getClient() {
 
   client ??= createClient(url, key, {
     auth: {
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-      persistSession: false,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      persistSession: true,
     },
   });
 
@@ -40,7 +40,7 @@ function getClient() {
 }
 
 export async function fetchProducts(): Promise<Product[]> {
-  const { data, error } = await getClient()
+  const { data, error } = await getSupabaseClient()
     .from('products')
     .select(
       'id, origin, brand, category, name_en, name_ar, category_name_en, category_name_ar, models, years, price, old_price, art, color',
@@ -73,7 +73,7 @@ export async function placeOrder(input: {
   language: 'en' | 'ar';
   items: { productId: string; quantity: number }[];
 }): Promise<void> {
-  const ordersClient = getClient() as unknown as {
+  const ordersClient = getSupabaseClient() as unknown as {
     from: (table: 'orders') => {
       insert: (row: {
         customer_name: string;
